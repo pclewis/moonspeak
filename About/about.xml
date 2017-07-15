@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>MoonSpeak</name>
+  <author>pcl</author>
+  <targetVersion>0.17.1546</targetVersion>
+  <description>
+    Write mods in Lua!
+  </description>
+</ModMetaData>
