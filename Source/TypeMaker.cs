@@ -16,9 +16,16 @@ namespace MoonSpeak
             var assembly = AppDomain.CurrentDomain.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.RunAndSave);
             return assembly.DefineDynamicModule(assembly.FullName);
         }
-        public static Type makeType(Script script, ModuleBuilder module, Type baseType, string name, Table delegates)
+        public static Type makeType(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
         {
-            var type = module.DefineType(name);
+            var existingType = module.GetTypes().Where(m => m.FullName == typeName).FirstOrDefault();
+            if(existingType != null)
+            {
+                Verse.Log.Message("Type " + typeName + " already exists, updating delegate table.");
+                existingType.GetField("_moonSpeakDelegates").SetValue(null, delegates);
+                return existingType;
+            }
+            var type = module.DefineType(typeName);
             type.SetParent(baseType);
             var delegateField = type.DefineField("_moonSpeakDelegates", typeof(Table), FieldAttributes.Public | FieldAttributes.Static);
             var scriptField = type.DefineField("_moonSpeakScript", typeof(Script), FieldAttributes.Public | FieldAttributes.Static);
@@ -26,7 +33,7 @@ namespace MoonSpeak
             foreach (var del in delegates.Pairs)
             {
                 var methodName = del.Key.String;
-                Console.WriteLine(methodName);
+                Verse.Log.Message("Creating method " + typeName + "." + methodName);
                 var methodDelegate = del.Value;
                 var baseMethod = baseType.GetMethod(methodName);
                 var parameters = baseMethod.GetParameters();
@@ -49,16 +56,24 @@ namespace MoonSpeak
                 gen.Emit(OpCodes.Ldstr, methodName);
                 gen.Emit(OpCodes.Callvirt, typeof(Table).GetMethod("Get", new Type[] { typeof(string) }));
                 // allocate dynValues
-                gen.Emit(OpCodes.Ldc_I4, parameters.Length);
+                gen.Emit(OpCodes.Ldc_I4, parameters.Length+1);
                 gen.Emit(OpCodes.Newarr, typeof(DynValue));
+
+                // pass 'this'
+                gen.Emit(OpCodes.Dup);
+                gen.Emit(OpCodes.Ldc_I4_0);
+                gen.Emit(OpCodes.Ldsfld, scriptField);
+                gen.Emit(OpCodes.Ldarg_0);
+                gen.Emit(OpCodes.Call, typeof(DynValue).GetMethod("FromObject"));
+                gen.Emit(OpCodes.Stelem_Ref);
 
                 // foreach(o in params) { dynValues.Add( DynValue.FromObject(script, o) ); }
                 for (var i = 0; i < parameters.Length; i++)
                 {
                     var paramType = paramTypes[i];
 
-                    gen.Emit(OpCodes.Dup);        // Duplicate array reference
-                    gen.Emit(OpCodes.Ldc_I4, i);  // Push index for stelem call at the end
+                    gen.Emit(OpCodes.Dup);            // Duplicate array reference
+                    gen.Emit(OpCodes.Ldc_I4, i + 1);  // Push index for stelem call at the end
 
                     // Convert argument to DynValue
                     gen.Emit(OpCodes.Ldsfld, scriptField);
@@ -135,6 +150,19 @@ namespace MoonSpeak
                     gen.Emit(OpCodes.Call, DynValueToObjectMethodFor(returnType));
                 }
                 gen.Emit(OpCodes.Ret);
+
+                var baseMethodProxy = type.DefineMethod("base_" + methodName,
+                    MethodAttributes.Public | MethodAttributes.HideBySig, // must be public, call is from lua, not us
+                    CallingConventions.Standard | CallingConventions.HasThis,
+                    returnType, paramTypes);
+                var gen2 = baseMethodProxy.GetILGenerator();
+                gen2.Emit(OpCodes.Ldarg_0);
+                for(var i = 0; i < parameters.Length; ++i)
+                {
+                    gen2.Emit(OpCodes.Ldarg, i + 1);
+                }
+                gen2.Emit(OpCodes.Call, baseMethod);
+                gen2.Emit(OpCodes.Ret);
             }
 
             var result = type.CreateType();
