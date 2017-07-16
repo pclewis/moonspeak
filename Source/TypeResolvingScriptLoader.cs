@@ -21,7 +21,6 @@ namespace MoonSpeak
             // See if we already loaded this type
             if (globalContext["__moonspeak", "types", modname] != null)
             {
-                Verse.Log.Message("Type already loaded " + modname);
                 return modname;
             }
 
@@ -32,7 +31,6 @@ namespace MoonSpeak
                 if (type != null)
                 {
                     globalContext["__moonspeak", "types", modname] = UserData.CreateStatic(type);
-                    Verse.Log.Message("Resolved type " + modname);
                     return modname;
                 }
             }
@@ -45,7 +43,6 @@ namespace MoonSpeak
             // We should only make it into LoadFile if ResolveModuleName found and stashed a type
             // so all we have to do is return the reference to the type. But we can't return it directly,
             // we have to return Lua code.
-            Verse.Log.Message("Loading type " + file);
             return "return _G['__moonspeak']['types']['" + file + "']";
         }
 
