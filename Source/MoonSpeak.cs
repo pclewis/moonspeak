@@ -15,10 +15,10 @@ namespace MoonSpeak
     {
         public void LoadDataFromXmlCustom(System.Xml.XmlNode node)
         {
-            // Game complains if we don't have a defName
-            defName = "moonspeakmodule";
-
             var targetMod = node.Attributes["Module"].Value;
+            // Game complains if we don't have a defName
+            defName = "moonspeakmodule_" + targetMod;
+
             Log.Message("Loading MoonSpeak Module " + targetMod);
             foreach (var mod in LoadedModManager.RunningMods)
             {
