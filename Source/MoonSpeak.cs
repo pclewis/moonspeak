@@ -74,8 +74,6 @@ namespace MoonSpeak
                 // Set up globals
                 script.Globals["__moonspeak"] = new Table(script);
                 script.Globals["__moonspeak", "types"] = new Table(script);
-                script.Globals["dostring"] = (Func<string, Table, string, DynValue>)(script.DoString);
-                script.Globals["loadstring"] = (Func<string, Table, string, DynValue>)(script.LoadString);
                 script.Globals["typeof"] = (Func<DynValue, Type>)TypeOf;
                 script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
 
