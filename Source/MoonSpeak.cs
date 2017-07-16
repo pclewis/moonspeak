@@ -62,12 +62,12 @@ namespace MoonSpeak
 
                 // Set up script loaders
                 var modScriptLoader = new FileSystemScriptLoader();
-                modScriptLoader.ModulePaths = new string[] { Path.Combine(baseLuaPath, "/?.lua") };
+                modScriptLoader.ModulePaths = new string[] { Path.Combine(baseLuaPath, "?.lua") };
 
                 if (Directory.Exists(sharedLuaPath))
                 {
                     Array.Resize(ref sharedModulePaths, sharedModulePaths.Length + 1);
-                    sharedModulePaths[sharedModulePaths.Length - 1] = Path.Combine(sharedLuaPath, "/?.lua");
+                    sharedModulePaths[sharedModulePaths.Length - 1] = Path.Combine(sharedLuaPath, "?.lua");
                 }
                 script.Options.ScriptLoader = new MultiScriptLoader(modScriptLoader, sharedScriptLoader, typeLoader);
 
