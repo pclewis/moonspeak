@@ -10,7 +10,7 @@ namespace MoonSpeak
     /// <summary>
     /// Script loader that returns static references to types.
     /// </summary>
-    class TypeResolvingScriptLoader : ScriptLoaderBase
+    public class TypeResolvingScriptLoader : ScriptLoaderBase
     {
         /// <summary>
         /// ResolveModuleName is called in require() before anything is attempted to be loaded.
@@ -18,20 +18,21 @@ namespace MoonSpeak
         /// </summary>
         public override string ResolveModuleName(string modname, Table globalContext)
         {
-            // See if we already loaded this type
-            if (globalContext["__moonspeak", "types", modname] != null)
-            {
-                return modname;
-            }
-
             // Look for matching Type
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 var type = assembly.GetType(modname);
                 if (type != null)
                 {
-                    globalContext["__moonspeak", "types", modname] = UserData.CreateStatic(type);
-                    return modname;
+                    DynValue dynWrapper = UserData.CreateStatic(type);
+
+                    // dynWrapper may be null if the TypeRegistrationPolicy doesn't allow access to the class.
+                    // We don't return early, cause there could actually be other types with the same name.
+                    if(dynWrapper != null)
+                    {
+                        globalContext["package", "loaded", modname] = dynWrapper;
+                        return modname;
+                    }
                 }
             }
 
@@ -43,7 +44,7 @@ namespace MoonSpeak
             // We should only make it into LoadFile if ResolveModuleName found and stashed a type
             // so all we have to do is return the reference to the type. But we can't return it directly,
             // we have to return Lua code.
-            return "return _G['__moonspeak']['types']['" + file + "']";
+            return "return package.loaded['" + file + "']";
         }
 
         public override bool ScriptFileExists(string name)

@@ -8,20 +8,35 @@ using System.Text;
 
 namespace MoonSpeak
 {
-    static class TypeMaker
+    public static class TypeMaker
     {
-        public static ModuleBuilder makeModule(string name)
+        public static AssemblyBuilder makeAssembly(string name)
         {
             var assemblyName = new AssemblyName(name);
-            var assembly = AppDomain.CurrentDomain.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.RunAndSave);
-            return assembly.DefineDynamicModule(assembly.FullName);
+            return AppDomain.CurrentDomain.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.RunAndSave, @"C:\users\pcl");
         }
+
+        public static ModuleBuilder makeModule(string name)
+        {
+            return makeModule(makeAssembly(name), name);
+        }
+
+        public static ModuleBuilder makeModule(AssemblyBuilder assembly, string name, string outputFile=null) {
+            if (outputFile != null)
+            {
+                return assembly.DefineDynamicModule(assembly.FullName, outputFile);
+            } else
+            {
+                return assembly.DefineDynamicModule(assembly.FullName);
+            }
+        }
+
         public static Type makeType(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
         {
             var existingType = module.GetTypes().Where(m => m.FullName == typeName).FirstOrDefault();
             if(existingType != null)
             {
-                Verse.Log.Message("Type " + typeName + " already exists, updating delegate table.");
+                //Verse.Log.Message("Type " + typeName + " already exists, updating delegate table.");
                 existingType.GetField("_moonSpeakDelegates").SetValue(null, delegates);
                 return existingType;
             }
@@ -33,7 +48,7 @@ namespace MoonSpeak
             foreach (var del in delegates.Pairs)
             {
                 var methodName = del.Key.String;
-                Verse.Log.Message("Creating method " + typeName + "." + methodName);
+                //Verse.Log.Message("Creating method " + typeName + "." + methodName);
                 var methodDelegate = del.Value;
                 var baseMethod = baseType.GetMethod(methodName);
                 var parameters = baseMethod.GetParameters();
@@ -44,8 +59,25 @@ namespace MoonSpeak
                     CallingConventions.Standard | CallingConventions.HasThis,
                     returnType, paramTypes);
                 var gen = method.GetILGenerator();
+                int refParamCount = 0;
+                int lastRefParamIndex = -1;
+                for(int i = 0; i < parameters.Length; ++i)
+                {
+                    if(paramTypes[i].IsByRef)
+                    {
+                        refParamCount += 1;
+                        lastRefParamIndex = i;
+                    }
+                }
 
-                bool hasRefParam = false;
+                bool isVoid = returnType == typeof(void);
+                bool isVoidWithSingleRef = isVoid && (refParamCount == 1);
+
+                if (isVoidWithSingleRef)
+                {
+                    // We need the ref on the stack to store it later
+                    gen.Emit(OpCodes.Ldarg, lastRefParamIndex+1); // +1 because arg_0 is `this`
+                }
 
                 // return script.Call( delegates[name], dynValues ).ToObject(returnType);
                 // script.
@@ -82,7 +114,6 @@ namespace MoonSpeak
                     // Load value for reference args
                     if (paramType.IsByRef)
                     {
-                        hasRefParam = true;
                         gen.Emit(OpCodes.Ldind_Ref);
                         paramType = paramType.GetElementType();
                     }
@@ -104,7 +135,7 @@ namespace MoonSpeak
                 gen.Emit(OpCodes.Callvirt, typeof(Script).GetMethod("Call", new Type[] { typeof(DynValue), typeof(DynValue[]) }));
 
                 // Unpack multi return to refs if any args were ref/out
-                if (hasRefParam)
+                if (!isVoidWithSingleRef && refParamCount > 0)
                 {
                     // No swap instruction, so we have to use a local :(
                     gen.DeclareLocal(typeof(DynValue[]));
@@ -112,7 +143,17 @@ namespace MoonSpeak
                     // Unpack tuple
                     gen.Emit(OpCodes.Callvirt, typeof(DynValue).GetProperty("Tuple").GetGetMethod());
                     gen.Emit(OpCodes.Stloc_0);
-                    int tupleIndex = 1;
+                    int tupleIndex = 0;
+
+                    // Pull return out of 0th slot
+                    if (!isVoid)
+                    {
+                        gen.Emit(OpCodes.Ldloc_0);
+                        gen.Emit(OpCodes.Ldc_I4, 0);
+                        gen.Emit(OpCodes.Ldelem_Ref);
+                        tupleIndex += 1;
+                    }
+
                     for (var i = 0; i < parameters.Length; i++)
                     {
                         if (!paramTypes[i].IsByRef) continue;
@@ -132,17 +173,23 @@ namespace MoonSpeak
                         tupleIndex += 1;
                     }
 
-                    // Pull return out of 0th slot
-                    gen.Emit(OpCodes.Ldloc_0);
-                    gen.Emit(OpCodes.Ldc_I4, 0);
-                    gen.Emit(OpCodes.Ldelem_Ref);
                 }
 
                 // Return
-                if (returnType == typeof(void))
+                if (isVoid)
                 {
-                    // no return, remove result from script.Call from the stack
-                    gen.Emit(OpCodes.Pop);
+                    if (isVoidWithSingleRef)
+                    {
+                        // Convert DynValue to correct type
+                        gen.Emit(OpCodes.Call, DynValueToObjectMethodFor(paramTypes[lastRefParamIndex].GetElementType()));
+                        // Assign returned value to ref (which was pushed at the very beginning)
+                        gen.Emit(OpCodes.Stind_Ref);
+                    }
+                    else
+                    {
+                        // Just remove result from script.Call from the stack
+                        gen.Emit(OpCodes.Pop);
+                    }
                 }
                 else
                 {

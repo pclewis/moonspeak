@@ -72,8 +72,6 @@ namespace MoonSpeak
                 script.Options.ScriptLoader = new MultiScriptLoader(modScriptLoader, sharedScriptLoader, typeLoader);
 
                 // Set up globals
-                script.Globals["__moonspeak"] = new Table(script);
-                script.Globals["__moonspeak", "types"] = new Table(script);
                 script.Globals["typeof"] = (Func<DynValue, Type>)TypeOf;
                 script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
 
@@ -97,7 +95,7 @@ namespace MoonSpeak
             }
         }
 
-        static Type TypeOf(DynValue v)
+        public static Type TypeOf(DynValue v)
         {
             if (v.Type == DataType.UserData && v.UserData.Object == null)
             {
