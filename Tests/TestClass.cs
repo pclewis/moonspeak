@@ -11,16 +11,16 @@ namespace Tests
 {
     public static class LoadMe
     {
-        public static int returnone() { return 1; }
+        public static int ReturnOne() { return 1; }
     }
 
     public abstract class OverrideMe
     {
-        public virtual int simpleMethod() { return 1; }
-        public virtual string methodWithParams(int i, string s) { return "hi"; }
-        public virtual int intWithRef(ref int i) { return i;  }
-        public virtual void voidWithRef(ref int i) { i = 1; }
-        public virtual int intWithRefAndOut(ref int i, out string s) { s = i.ToString(); return i; }
+        public virtual int SimpleMethod() { return 1; }
+        public virtual string MethodWithParams(int i, string s) { return "hi"; }
+        public virtual int IntWithRef(ref int i) { return i;  }
+        public virtual void VoidWithRef(ref int i) { i = 1; }
+        public virtual int IntWithRefAndOut(ref int i, out string s) { s = i.ToString(); return i; }
     }
 
     [TestFixture]
@@ -36,87 +36,86 @@ namespace Tests
         {
             Script script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            Assert.AreEqual(1, script.DoString("return require('Tests.LoadMe').returnone()").ToObject<int>());
+            Assert.AreEqual(1, script.DoString("return require('Tests.LoadMe').ReturnOne()").ToObject<int>());
         }
 
         [Test]
         public void TestDefineClassSimpleMethod()
         {
-            var module = TypeMaker.makeModule("testDefineClassSimpleMethod");
+            var module = TypeMaker.MakeModule("testDefineClassSimpleMethod");
             Script script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
-            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {simpleMethod=|| 90210} )");
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {SimpleMethod=|| 90210} )");
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
-            Assert.AreEqual(90210, instance.simpleMethod());
+            Assert.AreEqual(90210, instance.SimpleMethod());
         }
 
         [Test]
         public void TestDefineClassMethodWithParams()
         {
-            var module = TypeMaker.makeModule("testDefineClassMethodWithParams");
+            var module = TypeMaker.MakeModule("testDefineClassMethodWithParams");
             Script script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
-            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {methodWithParams=|self,i,s|  tostring(i) .. s} )");
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {MethodWithParams=|self,i,s|  tostring(i) .. s} )");
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
-            Assert.AreEqual("313ET", instance.methodWithParams(313, "ET"));
+            Assert.AreEqual("313ET", instance.MethodWithParams(313, "ET"));
         }
 
         [Test]
         public void TestDefineClassIntWithRef()
         {
-            var module = TypeMaker.makeModule("testDefineClassIntWithRef");
+            var module = TypeMaker.MakeModule("testDefineClassIntWithRef");
             Script script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             // note: metalua lambda syntax doesn't support tuple return
-            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {intWithRef=function(self, i) return i, i*i end} )");
+            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {IntWithRef=function(self, i) return i, i*i end} )");
 
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
             int i = 256;
-            Assert.AreEqual(256, instance.intWithRef(ref i));
+            Assert.AreEqual(256, instance.IntWithRef(ref i));
             Assert.AreEqual(256*256, i);
         }
 
         [Test]
         public void TestDefineClassVoidWithRef()
         {
-            var module = TypeMaker.makeModule("testDefineClassVoidWithRef");
+            var module = TypeMaker.MakeModule("testDefineClassVoidWithRef");
             Script script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
-            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {voidWithRef=|self,i| i*i} )");
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {VoidWithRef=|self,i| i*i} )");
 
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
             int i = 256;
-            instance.voidWithRef(ref i);
+            instance.VoidWithRef(ref i);
             Assert.AreEqual(256 * 256, i);
         }
 
         [Test]
         public void TestDefineClassIntWithRefAndOut()
         {
-            var module = TypeMaker.makeModule("testDefineClassIntWithRefAndOut");
+            var module = TypeMaker.MakeModule("testDefineClassIntWithRefAndOut");
             Script script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
-            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {intWithRefAndOut=function(self,i,s) return i+i, i*i, tostring(i) end} )");
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {IntWithRefAndOut=function(self,i,s) return i+i, i*i, tostring(i) end} )");
 
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
             int i = 150;
-            string s = "uhoh";
-            Assert.AreEqual(150+150, instance.intWithRefAndOut(ref i, out s));
+            Assert.AreEqual(150 + 150, instance.IntWithRefAndOut(ref i, out string s));
             Assert.AreEqual(150*150, i);
             Assert.AreEqual("150", s);
         }

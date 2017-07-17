@@ -54,7 +54,7 @@ namespace MoonSpeak
                 Log.Error("Error loading Lua mod " + mod.Name + ": Couldn't find " + mainFilePath);
             }
 
-            var module = TypeMaker.makeModule(mod.Name);
+            var module = TypeMaker.MakeModule(mod.Name);
 
             try
             {
@@ -73,7 +73,7 @@ namespace MoonSpeak
 
                 // Set up globals
                 script.Globals["typeof"] = (Func<DynValue, Type>)TypeOf;
-                script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.makeType(script, module, baseType, name, delegates));
+                script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
 
                 // Capture print
                 script.Options.DebugPrint = (s => Log.Message(s));

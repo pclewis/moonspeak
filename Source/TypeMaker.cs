@@ -10,18 +10,18 @@ namespace MoonSpeak
 {
     public static class TypeMaker
     {
-        public static AssemblyBuilder makeAssembly(string name)
+        public static AssemblyBuilder MakeAssembly(string name)
         {
             var assemblyName = new AssemblyName(name);
             return AppDomain.CurrentDomain.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.RunAndSave, @"C:\users\pcl");
         }
 
-        public static ModuleBuilder makeModule(string name)
+        public static ModuleBuilder MakeModule(string name)
         {
-            return makeModule(makeAssembly(name), name);
+            return MakeModule(MakeAssembly(name), name);
         }
 
-        public static ModuleBuilder makeModule(AssemblyBuilder assembly, string name, string outputFile = null)
+        public static ModuleBuilder MakeModule(AssemblyBuilder assembly, string name, string outputFile = null)
         {
             if (outputFile != null) {
                 return assembly.DefineDynamicModule(assembly.FullName, outputFile);
@@ -30,7 +30,7 @@ namespace MoonSpeak
             }
         }
 
-        public static Type makeType(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
+        public static Type MakeType(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
         {
             var tb = new LuaTypeBuilder(script, module, baseType, typeName, delegates);
             tb.AllSteps();
