@@ -56,7 +56,8 @@ namespace MoonSpeak
 
         private FieldBuilder delegateField;
         private FieldBuilder scriptField;
-        private FieldBuilder tableField;
+        private FieldBuilder indexField;
+        private FieldBuilder tableField;           // instance table for 'self' in lua code
 
         public LuaTypeBuilder(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
         {
@@ -84,8 +85,13 @@ namespace MoonSpeak
         public void DefineMethods()
         {
             if (typeBuilder != null) {
-                foreach (var method in baseType.GetConstructors()) {
-                    AddConstructor(method);
+                if (baseType.GetConstructors().Length == 0) {
+                    // If it's an abstract class it may not have a constructor
+                    AddConstructor(typeof(Object).GetConstructor(Type.EmptyTypes));
+                } else {
+                    foreach (var method in baseType.GetConstructors()) {
+                        AddConstructor(method);
+                    }
                 }
 
                 foreach (var method in baseType.GetMethods()) {
@@ -101,8 +107,15 @@ namespace MoonSpeak
         {
             if (existingType == null) {
                 existingType = typeBuilder.CreateType();
-                existingType.GetField("_moonSpeakDelegates").SetValue(null, delegates);
-                existingType.GetField("_moonSpeakScript").SetValue(null, script);
+                existingType.GetField(delegateField.Name).SetValue(null, delegates);
+                existingType.GetField(scriptField.Name).SetValue(null, script);
+                existingType.GetField(indexField.Name).SetValue(null,
+                    script.DoString(@"return function(table,index)
+                      print(table); print(index);
+                      local result = table[index]
+                      if result then return result end
+                      return getmetatable(table)[index]
+                    end"));
             }
             return existingType;
         }
@@ -112,7 +125,8 @@ namespace MoonSpeak
             if (typeBuilder != null) {
                 delegateField = typeBuilder.DefineField("_moonSpeakDelegates", typeof(Table), FieldAttributes.Public | FieldAttributes.Static);
                 scriptField = typeBuilder.DefineField("_moonSpeakScript", typeof(Script), FieldAttributes.Public | FieldAttributes.Static);
-                tableField = typeBuilder.DefineField("_moonSpeakTable", typeof(Table), FieldAttributes.Public);
+                indexField = typeBuilder.DefineField("_moonSpeakIndex", typeof(DynValue), FieldAttributes.Public | FieldAttributes.Static);
+                tableField = typeBuilder.DefineField("_moonSpeakTable", typeof(DynValue), FieldAttributes.Public);
             }
         }
 
@@ -125,6 +139,7 @@ namespace MoonSpeak
                 paramTypes);
             var gen = method.GetILGenerator();
             EmitBaseCall(gen, baseConstructor);
+            EmitTableInitializer(gen);
             var skip = gen.DefineLabel();
             EmitDelegateCall(gen, "__new", paramTypes, skip); // return value on stack, or jumped to skip
             EmitUnpackRefs(gen, typeof(void), paramTypes); // nothing on stack since return type is void
@@ -199,6 +214,9 @@ namespace MoonSpeak
             gen.Emit(OpCodes.Stloc, delVar);
             gen.Emit(OpCodes.Ldloc, delVar);
             gen.Emit(OpCodes.Brfalse, skip);
+            gen.Emit(OpCodes.Ldloc, delVar);
+            gen.Emit(OpCodes.Call, typeof(DynValue).GetMethod("IsNil"));
+            gen.Emit(OpCodes.Brtrue, skip);
 
             // allocate dynValues
             gen.Emit(OpCodes.Ldc_I4, paramTypes.Length + 1);
@@ -206,15 +224,11 @@ namespace MoonSpeak
             var arrVar = gen.DeclareLocal(typeof(DynValue[]));
             gen.Emit(OpCodes.Stloc, arrVar);
 
-            // pass 'this'
+            // arr[0] = self (our table)
             gen.Emit(OpCodes.Ldloc, arrVar);
             gen.Emit(OpCodes.Ldc_I4_0);
-
-            // DynValue.FromObject(script, this)
-            gen.Emit(OpCodes.Ldsfld, scriptField);
             gen.Emit(OpCodes.Ldarg_0);
-            gen.Emit(OpCodes.Call, typeof(DynValue).GetMethod("FromObject"));
-
+            gen.Emit(OpCodes.Ldfld, tableField);
             gen.Emit(OpCodes.Stelem_Ref);
 
             // foreach(o in params) { dynValues.Add( DynValue.FromObject(script, o) ); }
@@ -266,6 +280,10 @@ namespace MoonSpeak
             var refParams = paramTypes.Where(p => p.IsByRef);
             switch (refParams.Count()) {
                 case 0:
+                    // Leave stack empty when returnType is void
+                    if (returnType == typeof(void)) {
+                        gen.Emit(OpCodes.Pop);
+                    }
                     return;
 
                 case 1:
@@ -332,5 +350,51 @@ namespace MoonSpeak
                     break;
             }
         }
+
+        public void EmitTableInitializer(ILGenerator gen)
+        {
+            var tableConstructor = typeof(Table).GetConstructor(new Type[] { typeof(Script) });
+            var metaTableSet = typeof(Table).GetProperty("MetaTable").GetSetMethod();
+            var tableSet = typeof(Table).GetMethod("Set", new Type[] { typeof(string), typeof(DynValue) } );
+            var dynValueFromObject = typeof(DynValue).GetMethod("FromObject");
+            var dynValueNewTable = typeof(DynValue).GetMethod("NewTable", new Type[] { typeof(Script) });
+            var dynValueGetTable = typeof(DynValue).GetProperty("Table").GetGetMethod();
+
+            var table = gen.DeclareLocal(typeof(Table));
+            var metaTable = gen.DeclareLocal(typeof(Table));
+
+            //                                             STACK
+            // Create table
+            gen.Emit(OpCodes.Ldarg_0);                  // this
+            gen.Emit(OpCodes.Ldsfld, scriptField);      // this, this.script
+            gen.Emit(OpCodes.Call, dynValueNewTable);   // this, <new Table>
+            gen.Emit(OpCodes.Stfld, tableField);        //
+
+            // Create metatable
+            gen.Emit(OpCodes.Ldarg_0);                   //  this
+            gen.Emit(OpCodes.Ldfld, tableField);         //  this.table_dv
+            gen.Emit(OpCodes.Call, dynValueGetTable);    //  this.table
+            gen.Emit(OpCodes.Ldsfld, scriptField);       //  this.table, this.script
+            gen.Emit(OpCodes.Newobj, tableConstructor);  //  this.table, metatable
+            gen.Emit(OpCodes.Stloc, metaTable);          //  this.table
+            gen.Emit(OpCodes.Ldloc, metaTable);          //  this.table, metatable
+            gen.Emit(OpCodes.Call, metaTableSet);        //
+
+            // Set metatable.instance
+            gen.Emit(OpCodes.Ldloc, metaTable);          // metatable
+            gen.Emit(OpCodes.Ldstr, "instance");         // metatable, "instance"
+            gen.Emit(OpCodes.Ldsfld, scriptField);       // metatable, "instance", this.script
+            gen.Emit(OpCodes.Ldarg_0);                   // metatable, "instance", this.script, this
+            gen.Emit(OpCodes.Call, dynValueFromObject);  // metatable, "instance", dynvalue<this>
+            gen.Emit(OpCodes.Call, tableSet);            //
+
+            // Set metatable.__index
+            gen.Emit(OpCodes.Ldloc, metaTable);          // metatable
+            gen.Emit(OpCodes.Ldstr, "__index");          // metatable, "__index"
+            gen.Emit(OpCodes.Ldsfld, indexField);        // metatable, "__index", index_dv
+            gen.Emit(OpCodes.Call, tableSet);            //
+        }
     }
+
+
 }

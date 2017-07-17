@@ -119,5 +119,38 @@ namespace Tests
             Assert.AreEqual(150*150, i);
             Assert.AreEqual("150", s);
         }
+
+        [Test]
+        public void TestInstanceVars()
+        {
+            var assembly = TypeMaker.MakeAssembly("test");
+            var module = TypeMaker.MakeModule(assembly, "testInstanceVars", "test.dll");
+            Script script = new Script();
+            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
+            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            script.Options.DebugPrint = (s => Console.WriteLine(s));
+            Console.WriteLine("hi");
+            DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {SimpleMethod=function(self) print(type(self)); self.x = 8675309; return self.x end} )");
+
+            Type type = wrappedType.ToObject<Type>();
+            assembly.Save("test.dll");
+            var instance = (OverrideMe)Activator.CreateInstance(type);
+            Assert.AreEqual(8675309, instance.SimpleMethod());
+
+        }
+
+        [Test]
+        public void TestMeta()
+        {
+            Script script = new Script();
+            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
+            Assert.AreEqual(3, script.DoString(@"local t = require('Tests.LoadMe')
+              local parent = {ReturnTwo = ||2}
+              local self = {}
+              setmetatable(self, {__index=parent})
+              setmetatable(parent, {__index=t})
+              return self.ReturnOne() + self.ReturnTwo()").ToObject<int>());
+        }
     }
 }
