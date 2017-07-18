@@ -35,6 +35,14 @@ local Find = require('Verse.Find')
 Find.MapUI.selector.SingleSelectedThing.Kill()
 ```
 
+To instantiate, use `__new`:
+
+```.lua
+local Rect = require('UnityEngine.Rect')
+
+local myRect = Rect.__new(1,2,3,4)
+```
+
 For generics, you need to use the [mangled name](https://msdn.microsoft.com/en-us/library/w3f99sx1(v=vs.110).aspx#code-snippet-4):
 
 ```.cs
@@ -46,13 +54,13 @@ var allThings = Verse.DefDatabase<Verse.ThingDef>.AllDefs
 local allThings = require('Verse.DefDatabase`1[Verse.ThingDef]').AllDefs
 ```
 
-Lua's `type` will return `UserData` for C# objects. Use `typeof` to get their type.
+Lua's `type` will return `userdata` for C# objects. Use `typeof` to get their type.
 
 ## Defining C# classes
 
 Use `class(name, baseType, functionTable)`:
 
-```
+```.lua
 function MainTabWindow_MySweetMod:DoWindowContents(inRect)
   GUI.Label( inRect, 'whoa' )
 end
