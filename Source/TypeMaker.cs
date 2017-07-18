@@ -30,10 +30,15 @@ namespace MoonSpeak
             }
         }
 
-        public static Type MakeType(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
+        public static Type MakeType(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates, Closure custom=null)
         {
             var tb = new LuaTypeBuilder(script, module, baseType, typeName, delegates);
-            tb.AllSteps();
+            if (!tb.Finished) {
+                tb.AllSteps();
+                if (custom != null) {
+                    custom.Call(tb);
+                }
+            }
             return tb.Finish();
         }
 
@@ -59,6 +64,12 @@ namespace MoonSpeak
         private FieldBuilder indexField;
         private FieldBuilder newIndexField;
         private FieldBuilder tableField;           // instance table for 'self' in lua code
+
+        public bool Finished {
+            get {
+                return existingType != null;
+            }
+        }
 
         public LuaTypeBuilder(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
         {
@@ -149,7 +160,7 @@ namespace MoonSpeak
             EmitBaseCall(gen, baseConstructor);
             EmitTableInitializer(gen);
             var skip = gen.DefineLabel();
-            EmitDelegateCall(gen, "__new", paramTypes, skip); // return value on stack, or jumped to skip
+            EmitDelegateCall(gen, "__new", true, paramTypes, skip); // return value on stack, or jumped to skip
             EmitUnpackRefs(gen, typeof(void), paramTypes); // nothing on stack since return type is void
             gen.MarkLabel(skip);
             gen.Emit(OpCodes.Ret);
@@ -167,7 +178,8 @@ namespace MoonSpeak
             var gen = method.GetILGenerator();
             var skipUnpack = gen.DefineLabel();
             var skipCallBase = gen.DefineLabel();
-            EmitDelegateCall(gen, delegateName, paramTypes, skipUnpack); // return value on stack
+            var hasThis = (baseMethod.CallingConvention & CallingConventions.HasThis) != 0;
+            EmitDelegateCall(gen, delegateName, hasThis, paramTypes, skipUnpack); // return value on stack
             EmitUnpackRefs(gen, baseMethod.ReturnType, paramTypes); // return value on stack unless void
             EmitUnpackReturn(gen, baseMethod.ReturnType);
             gen.Emit(OpCodes.Br, skipCallBase);
@@ -175,6 +187,40 @@ namespace MoonSpeak
             EmitBaseCall(gen, baseMethod);
             gen.MarkLabel(skipCallBase);
             gen.Emit(OpCodes.Ret);
+        }
+
+        public MethodBuilder AddMethod(string methodName, MethodAttributes attributes, CallingConventions callingConvention, Type returnType, Type[] paramTypes, string delegateName)
+        {
+            var method = typeBuilder.DefineMethod(
+                methodName,
+                attributes,
+                callingConvention,
+                returnType,
+                paramTypes);
+            var gen = method.GetILGenerator();
+            var skip = gen.DefineLabel();
+            var hasThis = (callingConvention & CallingConventions.HasThis) != 0;
+            EmitDelegateCall(gen, delegateName, hasThis, paramTypes, skip); // return value on stack
+            EmitUnpackRefs(gen, returnType, paramTypes); // return value on stack unless void
+            EmitUnpackReturn(gen, returnType);
+            gen.Emit(OpCodes.Ret);
+            gen.MarkLabel(skip);
+            EmitNotImplementedException(gen, methodName, delegateName);
+            return method;
+        }
+
+        public MethodBuilder AddInstanceMethod(string methodName, Type returnType, Type[] paramTypes, string delegateName)
+        {
+            return AddMethod(methodName, MethodAttributes.Public,
+                CallingConventions.Standard | CallingConventions.HasThis,
+                returnType, paramTypes, delegateName);
+        }
+
+        public MethodBuilder AddStaticMethod(string methodName, Type returnType, Type[] paramTypes, string delegateName)
+        {
+            return AddMethod(methodName, MethodAttributes.Public | MethodAttributes.Static,
+                CallingConventions.Standard,
+                returnType, paramTypes, delegateName);
         }
 
         public void AddBaseCallerMethod(MethodInfo baseMethod)
@@ -210,8 +256,9 @@ namespace MoonSpeak
             gen.Emit(OpCodes.Call, baseMethod);
         }
 
-        public void EmitDelegateCall(ILGenerator gen, string methodName, Type[] paramTypes, Label skip)
+        public void EmitDelegateCall(ILGenerator gen, string methodName, bool hasThis, Type[] paramTypes, Label skip)
         {
+            var paramsOffset = hasThis ? 1 : 0;
             // delegates[name]
             gen.Emit(OpCodes.Ldsfld, delegateField);
             gen.Emit(OpCodes.Ldstr, methodName);
@@ -227,17 +274,19 @@ namespace MoonSpeak
             gen.Emit(OpCodes.Brtrue, skip);
 
             // allocate dynValues
-            gen.Emit(OpCodes.Ldc_I4, paramTypes.Length + 1);
+            gen.Emit(OpCodes.Ldc_I4, paramTypes.Length + (hasThis ? 1 : 0));
             gen.Emit(OpCodes.Newarr, typeof(DynValue));
             var arrVar = gen.DeclareLocal(typeof(DynValue[]));
             gen.Emit(OpCodes.Stloc, arrVar);
 
-            // arr[0] = self (our table)
-            gen.Emit(OpCodes.Ldloc, arrVar);
-            gen.Emit(OpCodes.Ldc_I4_0);
-            gen.Emit(OpCodes.Ldarg_0);
-            gen.Emit(OpCodes.Ldfld, tableField);
-            gen.Emit(OpCodes.Stelem_Ref);
+            if (hasThis) {
+                // arr[0] = self (our table)
+                gen.Emit(OpCodes.Ldloc, arrVar);
+                gen.Emit(OpCodes.Ldc_I4_0);
+                gen.Emit(OpCodes.Ldarg_0);
+                gen.Emit(OpCodes.Ldfld, tableField);
+                gen.Emit(OpCodes.Stelem_Ref);
+            }
 
             // foreach(o in params) { dynValues.Add( DynValue.FromObject(script, o) ); }
             for (var i = 0; i < paramTypes.Length; i++) {
@@ -245,11 +294,11 @@ namespace MoonSpeak
 
                 // Store the DynValue in the array
                 gen.Emit(OpCodes.Ldloc, arrVar);
-                gen.Emit(OpCodes.Ldc_I4, i + 1);
+                gen.Emit(OpCodes.Ldc_I4, i + paramsOffset);
 
                 // Convert argument to DynValue
                 gen.Emit(OpCodes.Ldsfld, scriptField);
-                gen.Emit(OpCodes.Ldarg, i + 1);
+                gen.Emit(OpCodes.Ldarg, i + paramsOffset);
 
                 // Load value for reference args
                 if (paramType.IsByRef) {
@@ -407,6 +456,14 @@ namespace MoonSpeak
             gen.Emit(OpCodes.Ldstr, "__newindex");       // metatable, "__newindex"
             gen.Emit(OpCodes.Ldsfld, newIndexField);     // metatable, "__newindex", newindex_dv
             gen.Emit(OpCodes.Call, tableSet);            //
+        }
+
+        public void EmitNotImplementedException(ILGenerator gen, string methodName, string delegateName)
+        {
+            var exceptionConstructor = typeof(NotImplementedException).GetConstructor(new Type[] { typeof(string) });
+            gen.Emit(OpCodes.Ldstr, methodName + " points to non-existent delegate " + delegateName);
+            gen.Emit(OpCodes.Newobj, exceptionConstructor);
+            gen.Emit(OpCodes.Throw);
         }
     }
 

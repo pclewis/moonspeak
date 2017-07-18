@@ -58,18 +58,23 @@ Lua's `type` will return `userdata` for C# objects. Use `typeof` to get their ty
 
 ## Defining C# classes
 
-Use `class(name, baseType, functionTable)`:
+Use `class(name, baseType, functionTable[, customBuilderCallback])`:
 
 ```.lua
+local GUI = require('UnityEngine.GUI')
+local MainTabWindow_MySweetMod = {}
+
 function MainTabWindow_MySweetMod:DoWindowContents(inRect)
   GUI.Label( inRect, 'whoa' )
 end
 
-class( "LuaTest.MainTabWindow_MySweetMod", typeof(require('RimWorld.MainTabWindow')), MainTabWindow_MySweetMod )
+class( "LuaTest.MainTabWindow_MySweetMod",           -- class name
+        typeof(require('RimWorld.MainTabWindow')),   -- base type
+        MainTabWindow_MySweetMod )                   -- function table
 ```
 
-Any method names that match virtual methods on the parent class will be
-implemented as overrides.
+Any keys in functionTable that match the names of virtual methods on the parent
+class will be implemented as overrides. Other keys are ignored.
 
 `self` in the Lua functions is a table that has a metatable pointing both to the
 functionTable provided and the backing C# object. This should mostly just work
@@ -77,6 +82,34 @@ the way you would expect.
 
 If you re-define a class, the function table on all new and existing instances
 is updated.
+
+To define C# methods that aren't overrides, pass a function as the last
+parameter to `class`:
+
+```.lua
+local patchClass =
+  class('LogMessagePatch', typeof(require('System.Object')),
+        {postfix=function(msg) state.logMessageQueue[#state.logMessageQueue+1] = msg.text end},
+        function(typeBuilder)
+          local method = typeBuilder.AddStaticMethod( -- or AddInstanceMethod
+            'postfix',                                -- method name
+            typeof(require('System.Void')),           -- return type
+            { typeof(require('Verse.LogMessage')) },  -- parameter types
+            'postfix')                                -- name in functionTable
+            
+          -- Add*Method returns a C# System.Reflection.Emit.MethodBuilder instance,
+          -- so we can do any other weird stuff we need to.
+          -- For example, Harmony requires param names to match, which is set this way:
+          method.DefineParameter(1,0,"msg")
+        end
+  )
+local original = typeof(require('Verse.LogMessageQueue')).GetMethod("Enqueue")
+local postfix = patchClass.GetMethod("postfix")
+harmony.Patch(original, nil, HarmonyMethod.__new(postfix))
+```
+
+**CAVEAT**: `customBuilder` is only called the first time you define a class. If
+you want to add methods later, you'll have to define a new class with a new name.
 
 ## How does it work
 

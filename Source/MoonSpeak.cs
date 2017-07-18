@@ -31,6 +31,37 @@ namespace MoonSpeak
         }
     }
 
+    [MoonSharpModule]
+    public class MoonSpeakLuaFunctions
+    {
+        [MoonSharpModuleMethod(Name="typeof")]
+        public static DynValue TypeOf(ScriptExecutionContext context, CallbackArguments args)
+        {
+            DynValue v = args[0];
+            if (v.Type == DataType.UserData && v.UserData.Object == null) {
+                return DynValue.FromObject(context.OwnerScript, v.UserData.Descriptor.Type);
+            } else {
+                return DynValue.FromObject(context.OwnerScript, v.ToObject().GetType());
+            }
+        }
+
+        [MoonSharpModuleMethod(Name="class")]
+        public static DynValue Class(ScriptExecutionContext context, CallbackArguments args)
+        {
+            Script script = context.OwnerScript;
+            ModuleBuilder module = (ModuleBuilder)script.Globals["_moonSpeakModule"];
+            Type type = TypeMaker.MakeType(
+                script,
+                module,
+                args.AsUserData<Type>(1, "class", false),
+                args.AsStringUsingMeta(context, 0, "class"),
+                args.AsType(2, "class", DataType.Table).Table,
+                args.Count < 4 ? null : args.AsType(3, "class", DataType.Function).Function);
+
+            return DynValue.FromObject(script, type);
+        }
+    }
+
     public class MoonSpeakManager
     {
         static ScriptLoaderBase sharedScriptLoader = new FileSystemScriptLoader();
@@ -72,8 +103,8 @@ namespace MoonSpeak
                 script.Options.ScriptLoader = new MultiScriptLoader(modScriptLoader, sharedScriptLoader, typeLoader);
 
                 // Set up globals
-                script.Globals["typeof"] = (Func<DynValue, Type>)TypeOf;
-                script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+                script.Globals.RegisterModuleType<MoonSpeakLuaFunctions>();
+                script.Globals["_moonSpeakModule"] = module;
 
                 // Capture print
                 script.Options.DebugPrint = (s => Log.Message(s));
@@ -92,18 +123,6 @@ namespace MoonSpeak
             catch (Exception e)
             {
                 Log.Notify_Exception(e);
-            }
-        }
-
-        public static Type TypeOf(DynValue v)
-        {
-            if (v.Type == DataType.UserData && v.UserData.Object == null)
-            {
-                return v.UserData.Descriptor.Type;
-            }
-            else
-            {
-                return v.ToObject().GetType();
             }
         }
     }

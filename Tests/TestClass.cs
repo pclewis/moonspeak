@@ -28,27 +28,32 @@ namespace Tests
     [TestFixture]
     public class TestClass
     {
+        Script script;
+
         static TestClass()
         {
             UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Automatic;
         }
 
+        [SetUp]
+        public void SetUpScript()
+        {
+            var module = TypeMaker.MakeModule("test");
+            script = new Script();
+            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
+            script.Globals.RegisterModuleType<MoonSpeakLuaFunctions>();
+            script.Globals["_moonSpeakModule"] = module;
+        }
+
         [Test]
         public void TestTypeLoader()
         {
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             Assert.AreEqual(1, script.DoString("return require('Tests.LoadMe').ReturnOne()").ToObject<int>());
         }
 
         [Test]
         public void TestDefineClassSimpleMethod()
         {
-            var module = TypeMaker.MakeModule("testDefineClassSimpleMethod");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {SimpleMethod=|| 90210} )");
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
@@ -58,11 +63,6 @@ namespace Tests
         [Test]
         public void TestDefineClassMethodWithParams()
         {
-            var module = TypeMaker.MakeModule("testDefineClassMethodWithParams");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {MethodWithParams=|self,i,s|  tostring(i) .. s} )");
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
@@ -72,11 +72,6 @@ namespace Tests
         [Test]
         public void TestDefineClassIntWithRef()
         {
-            var module = TypeMaker.MakeModule("testDefineClassIntWithRef");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             // note: metalua lambda syntax doesn't support tuple return
             DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {IntWithRef=function(self, i) return i, i*i end} )");
 
@@ -90,11 +85,6 @@ namespace Tests
         [Test]
         public void TestDefineClassVoidWithRef()
         {
-            var module = TypeMaker.MakeModule("testDefineClassVoidWithRef");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {VoidWithRef=|self,i| i*i} )");
 
             Type type = wrappedType.ToObject<Type>();
@@ -107,11 +97,8 @@ namespace Tests
         [Test]
         public void TestDefineClassIntWithRefAndOut()
         {
-            var module = TypeMaker.MakeModule("testDefineClassIntWithRefAndOut");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            Console.WriteLine(script.Globals["class"]);
+            Console.WriteLine(script.Globals["typeof"]);
             DynValue wrappedType = script.DoString("return class( 'Overridden', typeof(require('Tests.OverrideMe')), {IntWithRefAndOut=function(self,i,s) return i+i, i*i, tostring(i) end} )");
 
             Type type = wrappedType.ToObject<Type>();
@@ -125,12 +112,6 @@ namespace Tests
         [Test]
         public void TestInstanceVars()
         {
-            var module = TypeMaker.MakeModule("testInstanceVars");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
-            script.Options.DebugPrint = (s => Console.WriteLine(">>"+s));
             DynValue wrappedType = script.DoString(@"return class( 'Overridden', typeof(require('Tests.OverrideMe')), {
                 ReturnTwo=||2,
                 SimpleMethod=function(self)
@@ -147,11 +128,6 @@ namespace Tests
         [Test]
         public void TestNoNewTableEntryOnInvalidTypeForField()
         {
-            var module = TypeMaker.MakeModule("test");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             DynValue wrappedType = script.DoString(@"return class( 'Overridden', typeof(require('Tests.OverrideMe')), {
                 SimpleMethod=function(self)
                               self.n = 'hi'
@@ -166,11 +142,6 @@ namespace Tests
         [Test]
         public void TestReloadWithNewMethodOverridden()
         {
-            var module = TypeMaker.MakeModule("test");
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
-            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
-            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
             DynValue wrappedType = script.DoString(@"return class( 'Overridden', typeof(require('Tests.OverrideMe')), {SimpleMethod=||100} )");
             Type type = wrappedType.ToObject<Type>();
             var instance = (OverrideMe)Activator.CreateInstance(type);
@@ -184,10 +155,35 @@ namespace Tests
         }
 
         [Test]
+        public void TestCustom()
+        {
+            DynValue wrappedType = script.DoString(@"return class('HelloWorld', typeof(require('System.Object')),
+              {Greet = |self,n| 'Hello, ' .. n},
+              function(typeBuilder)
+                typeBuilder.addInstanceMethod('Greet', typeof(require('System.String')), { typeof(require('System.String')) }, 'Greet' );
+              end)");
+            var type = wrappedType.ToObject<Type>();
+            var instance = Activator.CreateInstance(type);
+            var result = (String)type.GetMethod("Greet").Invoke(instance, new object[] { "world" });
+            Assert.AreEqual("Hello, world", result);
+        }
+
+        [Test]
+        public void TestCustomStatic()
+        {
+            DynValue wrappedType = script.DoString(@"return class('HelloWorld', typeof(require('System.Object')),
+              {Greet = |n| 'Hello, ' .. n},
+              function(typeBuilder)
+                typeBuilder.addStaticMethod('Greet', typeof(require('System.String')), { typeof(require('System.String')) }, 'Greet' );
+              end)");
+            var type = wrappedType.ToObject<Type>();
+            var result = (String)type.GetMethod("Greet").Invoke(null, new object[] { "world" });
+            Assert.AreEqual("Hello, world", result);
+        }
+
+        [Test]
         public void TestMeta()
         {
-            Script script = new Script();
-            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             Assert.AreEqual(3, script.DoString(@"local t = require('Tests.LoadMe')
               local parent = {ReturnTwo = ||2}
               local self = {}
