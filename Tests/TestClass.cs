@@ -145,6 +145,25 @@ namespace Tests
         }
 
         [Test]
+        public void TestNoNewTableEntryOnInvalidTypeForField()
+        {
+            var module = TypeMaker.MakeModule("test");
+            Script script = new Script();
+            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
+            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            DynValue wrappedType = script.DoString(@"return class( 'Overridden', typeof(require('Tests.OverrideMe')), {
+                SimpleMethod=function(self)
+                              self.n = 'hi'
+                              return self.n
+                end} )");
+            Type type = wrappedType.ToObject<Type>();
+            var instance = (OverrideMe)Activator.CreateInstance(type);
+            Assert.Throws<MoonSharp.Interpreter.ScriptRuntimeException>( delegate { instance.SimpleMethod(); });
+            Assert.True(((DynValue)type.GetField("_moonSpeakTable").GetValue(instance)).Table.Get('n').IsNil() );
+        }
+
+        [Test]
         public void TestMeta()
         {
             Script script = new Script();
