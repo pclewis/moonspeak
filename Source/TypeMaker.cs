@@ -262,16 +262,13 @@ namespace MoonSpeak
             // delegates[name]
             gen.Emit(OpCodes.Ldsfld, delegateField);
             gen.Emit(OpCodes.Ldstr, methodName);
-            gen.Emit(OpCodes.Callvirt, typeof(Table).GetMethod("Get", new Type[] { typeof(string) }));
+            gen.Emit(OpCodes.Call, typeof(LuaTypeBuilder).GetMethod("GetFromTableWithMeta", new Type[] { typeof(Table), typeof(string) }));
 
             // Skip if delegate doesn't exist
             var delVar = gen.DeclareLocal(typeof(DynValue));
             gen.Emit(OpCodes.Stloc, delVar);
             gen.Emit(OpCodes.Ldloc, delVar);
             gen.Emit(OpCodes.Brfalse, skip);
-            gen.Emit(OpCodes.Ldloc, delVar);
-            gen.Emit(OpCodes.Call, typeof(DynValue).GetMethod("IsNil"));
-            gen.Emit(OpCodes.Brtrue, skip);
 
             // allocate dynValues
             gen.Emit(OpCodes.Ldc_I4, paramTypes.Length + (hasThis ? 1 : 0));
@@ -464,6 +461,37 @@ namespace MoonSpeak
             gen.Emit(OpCodes.Ldstr, methodName + " points to non-existent delegate " + delegateName);
             gen.Emit(OpCodes.Newobj, exceptionConstructor);
             gen.Emit(OpCodes.Throw);
+        }
+
+        // Get value from a table, looking through metatables if present.
+        // Returns null if not found, never DynValue.Nil
+        public static DynValue GetFromTableWithMeta(Table table, string key)
+        {
+            for (int maxIterations = 100; maxIterations > 0; maxIterations--) {
+                DynValue result = table.Get(key);
+                if (result != null && result.IsNotNil()) {
+                    return result;
+                }
+
+                Table meta = table.MetaTable;
+                if (meta == null) {
+                    return null;
+                }
+
+                DynValue metaIndex = meta.Get("__index");
+                if(metaIndex == null) {
+                    return null;
+                }
+
+                if(metaIndex.Type == DataType.Table) {
+                    table = metaIndex.Table;
+                    continue;
+                } else if (metaIndex.Type == DataType.Function) {
+                    result = metaIndex.Function.Call(table, key);
+                    return result.IsNil() ? null : result;
+                }
+            }
+            return null;
         }
     }
 

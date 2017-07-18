@@ -28,7 +28,9 @@ namespace Tests
     [TestFixture]
     public class TestClass
     {
+        const bool DUMP_ASSEMBLY = false;
         Script script;
+        System.Reflection.Emit.AssemblyBuilder assembly;
 
         static TestClass()
         {
@@ -38,11 +40,20 @@ namespace Tests
         [SetUp]
         public void SetUpScript()
         {
-            var module = TypeMaker.MakeModule("test");
+            assembly = TypeMaker.MakeAssembly("test");
+            var module = TypeMaker.MakeModule(assembly, "test", "test.dll");
             script = new Script();
             script.Options.ScriptLoader = new TypeResolvingScriptLoader();
             script.Globals.RegisterModuleType<MoonSpeakLuaFunctions>();
             script.Globals["_moonSpeakModule"] = module;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (DUMP_ASSEMBLY) {
+                assembly.Save("test.dll");
+            }
         }
 
         [Test]
@@ -190,6 +201,23 @@ namespace Tests
               setmetatable(self, {__index=parent})
               setmetatable(parent, {__index=t})
               return self.ReturnOne() + self.ReturnTwo()").ToObject<int>());
+        }
+
+        [Test]
+        public void TestMetaMeta()
+        {
+            DynValue wrappedType = script.DoString(@"
+              local ftabparent = {Greet = |n| 'Hello, ' .. n}
+              local ftab = {}
+              setmetatable(ftab, {__index=ftabparent})
+              return class('TestMetaMeta.HelloWorld', typeof(require('System.Object')),
+                ftab,
+                function(typeBuilder)
+                  typeBuilder.addStaticMethod('Greet', typeof(require('System.String')), { typeof(require('System.String')) }, 'Greet' );
+                end)");
+            var type = wrappedType.ToObject<Type>();
+            var result = (String)type.GetMethod("Greet").Invoke(null, new object[] { "world" });
+            Assert.AreEqual("Hello, world", result);
         }
     }
 }
