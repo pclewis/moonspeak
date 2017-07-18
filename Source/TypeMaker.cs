@@ -57,6 +57,7 @@ namespace MoonSpeak
         private FieldBuilder delegateField;
         private FieldBuilder scriptField;
         private FieldBuilder indexField;
+        private FieldBuilder newIndexField;
         private FieldBuilder tableField;           // instance table for 'self' in lua code
 
         public LuaTypeBuilder(Script script, ModuleBuilder module, Type baseType, string typeName, Table delegates)
@@ -111,10 +112,16 @@ namespace MoonSpeak
                 existingType.GetField(scriptField.Name).SetValue(null, script);
                 existingType.GetField(indexField.Name).SetValue(null,
                     script.DoString(@"return function(table,index)
-                      print(table); print(index);
-                      local result = table[index]
+                      local instance = getmetatable(table).instance
+                      local result = instance._moonSpeakDelegates[index]
                       if result then return result end
-                      return getmetatable(table)[index]
+                      return instance[index]
+                    end"));
+                existingType.GetField(newIndexField.Name).SetValue(null,
+                    script.DoString(@"return function(table,index,value)
+                      local instance = getmetatable(table).instance
+                      local status = pcall(function() instance[index]=value end)
+                      if not status then rawset(table,index,value) end
                     end"));
             }
             return existingType;
@@ -126,6 +133,7 @@ namespace MoonSpeak
                 delegateField = typeBuilder.DefineField("_moonSpeakDelegates", typeof(Table), FieldAttributes.Public | FieldAttributes.Static);
                 scriptField = typeBuilder.DefineField("_moonSpeakScript", typeof(Script), FieldAttributes.Public | FieldAttributes.Static);
                 indexField = typeBuilder.DefineField("_moonSpeakIndex", typeof(DynValue), FieldAttributes.Public | FieldAttributes.Static);
+                newIndexField = typeBuilder.DefineField("_moonSpeakNewIndex", typeof(DynValue), FieldAttributes.Public | FieldAttributes.Static);
                 tableField = typeBuilder.DefineField("_moonSpeakTable", typeof(DynValue), FieldAttributes.Public);
             }
         }
@@ -392,6 +400,12 @@ namespace MoonSpeak
             gen.Emit(OpCodes.Ldloc, metaTable);          // metatable
             gen.Emit(OpCodes.Ldstr, "__index");          // metatable, "__index"
             gen.Emit(OpCodes.Ldsfld, indexField);        // metatable, "__index", index_dv
+            gen.Emit(OpCodes.Call, tableSet);            //
+
+            // Set metatable.__newindex
+            gen.Emit(OpCodes.Ldloc, metaTable);          // metatable
+            gen.Emit(OpCodes.Ldstr, "__newindex");       // metatable, "__newindex"
+            gen.Emit(OpCodes.Ldsfld, newIndexField);     // metatable, "__newindex", newindex_dv
             gen.Emit(OpCodes.Call, tableSet);            //
         }
     }
