@@ -164,6 +164,26 @@ namespace Tests
         }
 
         [Test]
+        public void TestReloadWithNewMethodOverridden()
+        {
+            var module = TypeMaker.MakeModule("test");
+            Script script = new Script();
+            script.Options.ScriptLoader = new TypeResolvingScriptLoader();
+            script.Globals["typeof"] = (Func<DynValue, Type>)MoonSpeakManager.TypeOf;
+            script.Globals["class"] = (Func<String, Type, Table, Type>)((name, baseType, delegates) => TypeMaker.MakeType(script, module, baseType, name, delegates));
+            DynValue wrappedType = script.DoString(@"return class( 'Overridden', typeof(require('Tests.OverrideMe')), {SimpleMethod=||100} )");
+            Type type = wrappedType.ToObject<Type>();
+            var instance = (OverrideMe)Activator.CreateInstance(type);
+            Assert.AreEqual(100, instance.SimpleMethod());
+            Assert.AreEqual(1, instance.ReturnOne());
+            DynValue wrappedType2 = script.DoString(@"return class( 'Overridden', typeof(require('Tests.OverrideMe')), {ReturnOne=||200} )");
+            Type type2 = wrappedType.ToObject<Type>();
+            Assert.AreEqual(type, type2);
+            Assert.AreEqual(1, instance.SimpleMethod());
+            Assert.AreEqual(200, instance.ReturnOne());
+        }
+
+        [Test]
         public void TestMeta()
         {
             Script script = new Script();
