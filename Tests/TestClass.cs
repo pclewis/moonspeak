@@ -20,7 +20,7 @@ namespace Tests
         public virtual int ReturnOne() { return 1; }
         public virtual int SimpleMethod() { return 1; }
         public virtual string MethodWithParams(int i, string s) { return "hi"; }
-        public virtual int IntWithRef(ref int i) { return i;  }
+        public virtual int IntWithRef(ref int i) { return i; }
         public virtual void VoidWithRef(ref int i) { i = 1; }
         public virtual int IntWithRefAndOut(ref int i, out string s) { s = i.ToString(); return i; }
     }
@@ -84,7 +84,7 @@ namespace Tests
             var instance = (OverrideMe)Activator.CreateInstance(type);
             int i = 256;
             Assert.AreEqual(256, instance.IntWithRef(ref i));
-            Assert.AreEqual(256*256, i);
+            Assert.AreEqual(256 * 256, i);
         }
 
         [Test]
@@ -118,7 +118,7 @@ namespace Tests
             var instance = (OverrideMe)Activator.CreateInstance(type);
             int i = 150;
             Assert.AreEqual(150 + 150, instance.IntWithRefAndOut(ref i, out string s));
-            Assert.AreEqual(150*150, i);
+            Assert.AreEqual(150 * 150, i);
             Assert.AreEqual("150", s);
         }
 
