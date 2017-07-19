@@ -25,6 +25,11 @@ namespace Tests
         public virtual int IntWithRefAndOut(ref int i, out string s) { s = i.ToString(); return i; }
     }
 
+    public abstract class Abstract
+    {
+        public abstract int ReturnOne();
+    }
+
     [TestFixture]
     public class TestClass
     {
@@ -218,6 +223,15 @@ namespace Tests
             var type = wrappedType.ToObject<Type>();
             var result = (String)type.GetMethod("Greet").Invoke(null, new object[] { "world" });
             Assert.AreEqual("Hello, world", result);
+        }
+
+        [Test]
+        public void TestAbstractBase()
+        {
+            DynValue wrappedType = script.DoString("return class( 'Abstracted', typeof(require('Tests.Abstract')), {ReturnOne=|| 11111} )");
+            Type type = wrappedType.ToObject<Type>();
+            var instance = (Abstract)Activator.CreateInstance(type);
+            Assert.AreEqual(11111, instance.ReturnOne());
         }
     }
 }

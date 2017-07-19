@@ -108,7 +108,9 @@ namespace MoonSpeak
 
                 foreach (var method in baseType.GetMethods()) {
                     if (method.IsVirtual) {
-                        AddBaseCallerMethod(method);
+                        if (!method.IsAbstract) {
+                            AddBaseCallerMethod(method);
+                        }
                         AddMethod(method, method.Name);
                     }
                 }
@@ -171,7 +173,7 @@ namespace MoonSpeak
             var paramTypes = baseMethod.GetParameters().Select(p => p.ParameterType).ToArray();
             var method = typeBuilder.DefineMethod(
                 baseMethod.Name,
-                baseMethod.Attributes &~ MethodAttributes.NewSlot,
+                baseMethod.Attributes & ~(MethodAttributes.NewSlot | MethodAttributes.Abstract),
                 baseMethod.CallingConvention,
                 baseMethod.ReturnType,
                 paramTypes);
